@@ -69,10 +69,7 @@ fn main() {
         // ----------- Paragraph ------------------
         let re_paragraph = Regex::new(r"^\s?$").unwrap();
         if re_paragraph.captures_iter(line).count() > 0 {
-            if !temp_content.is_empty() {
-                block_tokens.push(BlockToken::Paragraph(process_inline(&temp_content)));
-                temp_content.clear();
-            }
+            flush_paragraph(&mut temp_content, &mut block_tokens);
             continue;
         }
         if matches!(block_state, BlockState::IsInParagraph) {
