@@ -35,7 +35,7 @@ fn main() {
         // ------------ Header ------------------
         let mut header_content: &str = "";
         let mut header_level: u8 = 0;
-        let re_header = Regex::new(r"(#{1,6})(\s+)(.*)").unwrap();
+        let re_header = Regex::new(r"(#^{1,6})(\s+)(.*)").unwrap();
         for (_, [header_tag, _, header_match]) in re_header.captures_iter(line).map(|c| c.extract()) {
             header_content = header_match;
             header_level = header_tag.len() as u8;
@@ -55,18 +55,14 @@ fn main() {
                     block_state = BlockState::IsInParagraph;
                 },
                 BlockState::IsInParagraph => {
-                    block_tokens.push(BlockToken::Paragraph(process_inline(&temp_content)));
-                    temp_content.clear();
+                    flush_paragraph(&mut temp_content, &mut block_tokens);
                     block_state = BlockState::IsInCode;
                 }
             }
             continue;
         }
         if matches!(block_state, BlockState::IsInCode) {
-            if !temp_content.is_empty() {
-                temp_content.push_str("\n");
-            }
-            temp_content.push_str(line);
+            push_with_nl(&mut temp_content, line);
             continue;
         }
 
@@ -87,12 +83,24 @@ fn main() {
             continue;
         }
     }
-    if !temp_content.is_empty() {
-        block_tokens.push(BlockToken::Paragraph(process_inline(&temp_content.clone())));
-    }
+    flush_paragraph(&mut temp_content, &mut block_tokens);
     for token in block_tokens {
         println!("{:?}", token);
     }
+}
+
+fn push_with_nl(orig_text: &mut String, new_line: &str) {
+    if !orig_text.is_empty() {
+        orig_text.push_str("\n");
+    }
+    orig_text.push_str(new_line);
+}
+
+fn flush_paragraph(temp_content: &mut String, block_tokens: &mut Vec<BlockToken>) {
+    if !temp_content.is_empty() {
+        block_tokens.push(BlockToken::Paragraph(process_inline(temp_content)));
+    }
+    temp_content.clear();
 }
 
 fn process_inline(inline_string: &str) -> Vec<InlineToken> {

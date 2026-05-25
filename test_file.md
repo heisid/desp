@@ -18,3 +18,9 @@ Now, what about `inline code like this`.
 ---
 
 One above is a line. <https://arxiv.org>
+
+- this is an unordered list
+- second entry
+
+1. ordered list entry one
+1. ordered list entry two
