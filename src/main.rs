@@ -89,7 +89,6 @@ fn main() {
             continue;
         }
         if matches!(block_state, BlockState::IsInParagraph) {
-            temp_content.push_str(line);
             push_with_nl(&mut temp_content, line);
             continue;
         }
