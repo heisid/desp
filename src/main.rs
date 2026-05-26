@@ -6,6 +6,7 @@ enum BlockToken {
     Paragraph(Vec<InlineToken>),
     Header{level: u8, content: Vec<InlineToken>},
     Code(String),
+    Line,
     UnorderedListItem(Vec<InlineToken>),
 }
 
@@ -64,6 +65,13 @@ fn main() {
         }
         if matches!(block_state, BlockState::IsInCode) {
             push_with_nl(&mut temp_content, line);
+            continue;
+        }
+
+        // ---------- Divider line ---------------
+        let re_line = Regex::new(r"^-+\s?$").unwrap();
+        if re_line.is_match(line) {
+            block_tokens.push(BlockToken::Line);
             continue;
         }
 
