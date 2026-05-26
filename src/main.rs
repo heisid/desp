@@ -6,11 +6,12 @@ enum BlockToken {
     Paragraph(Vec<InlineToken>),
     Header{level: u8, content: Vec<InlineToken>},
     Code(String),
+    UnorderedListItem(Vec<InlineToken>),
 }
 
 enum BlockState {
     IsInParagraph,
-    IsInCode
+    IsInCode,
 }
 
 #[derive(Debug)]
@@ -54,7 +55,7 @@ fn main() {
                     temp_content.clear();
                     block_state = BlockState::IsInParagraph;
                 },
-                BlockState::IsInParagraph => {
+                _ => {
                     flush_paragraph(&mut temp_content, &mut block_tokens);
                     block_state = BlockState::IsInCode;
                 }
@@ -66,6 +67,13 @@ fn main() {
             continue;
         }
 
+        // ----------- Unordered List -------------
+        let re_ul = Regex::new(r"^[-*]\s(.*)").unwrap();
+        if let Some(caps) = re_ul.captures(line) {
+            block_tokens.push(BlockToken::UnorderedListItem(process_inline(caps.get(1).unwrap().as_str())));
+            continue;
+        }
+
         // ----------- Paragraph ------------------
         let re_paragraph = Regex::new(r"^\s?$").unwrap();
         if re_paragraph.captures_iter(line).count() > 0 {
@@ -73,10 +81,8 @@ fn main() {
             continue;
         }
         if matches!(block_state, BlockState::IsInParagraph) {
-            if !temp_content.is_empty() {
-                temp_content.push('\n');
-            }
             temp_content.push_str(line);
+            push_with_nl(&mut temp_content, line);
             continue;
         }
     }
@@ -100,13 +106,13 @@ fn flush_paragraph(temp_content: &mut String, block_tokens: &mut Vec<BlockToken>
     temp_content.clear();
 }
 
-fn process_inline(inline_string: &str) -> Vec<InlineToken> {
+fn process_inline(text: &str) -> Vec<InlineToken> {
     let mut inline_tokens: Vec<InlineToken> = Vec::new();
     // Match text wrapped in *...* or **...**, where the content
     // does not start/end with space or contain *
     let re_asterix = Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap();
     let mut collected_tokens: Vec<(usize, usize, InlineToken)> = vec![]; // index start, index end, token
-    for capture in re_asterix.captures_iter(inline_string) {
+    for capture in re_asterix.captures_iter(text) {
         let re_match = capture.get(1).unwrap();
         let index_start = re_match.start();
         let index_end = re_match.end();
@@ -125,11 +131,11 @@ fn process_inline(inline_string: &str) -> Vec<InlineToken> {
     };
     let mut last_unformatted_index: usize = 0;
     if collected_tokens.is_empty() {
-        inline_tokens.push(InlineToken::Unformatted(String::from(inline_string)));
+        inline_tokens.push(InlineToken::Unformatted(String::from(text)));
         return inline_tokens;
     }
     for token in collected_tokens {
-        let unformatted = inline_string[last_unformatted_index..token.0].to_string();
+        let unformatted = text[last_unformatted_index..token.0].to_string();
         if !unformatted.is_empty() {
             inline_tokens.push(InlineToken::Unformatted(unformatted));
         }
