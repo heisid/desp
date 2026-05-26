@@ -22,6 +22,7 @@ enum InlineToken {
     Italics(String),
     BoldItalics(String),
     Code(String),
+    Link{caption: String, url: String},
 }
 
 
@@ -115,10 +116,11 @@ fn flush_paragraph(temp_content: &mut String, block_tokens: &mut Vec<BlockToken>
 
 fn process_inline(text: &str) -> Vec<InlineToken> {
     let mut inline_tokens: Vec<InlineToken> = Vec::new();
+    let mut collected_tokens: Vec<(usize, usize, InlineToken)> = vec![]; // index start, index end, token
+    // ----- Bold and italics ---------
     // Match text wrapped in *...* or **...**, where the content
     // does not start/end with space or contain *
     let re_asterix = Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap();
-    let mut collected_tokens: Vec<(usize, usize, InlineToken)> = vec![]; // index start, index end, token
     for capture in re_asterix.captures_iter(text) {
         let re_match = capture.get(1).unwrap();
         let index_start = re_match.start();
@@ -136,6 +138,15 @@ fn process_inline(text: &str) -> Vec<InlineToken> {
             collected_tokens.push((index_start, index_end, token));
         }
     };
+    // ------ Named Link ---------
+    let re_link = Regex::new(r"\[(.*)]\((.*)\)").unwrap();
+    for capture in re_link.captures_iter(text) {
+        let re_match = capture.get(1).unwrap();
+        let index_start = re_match.start()-1;
+        let index_end = re_match.end();
+        let (_, [caption, url]) = capture.extract();
+        collected_tokens.push((index_start, index_end, InlineToken::Link{caption: caption.to_string(), url: url.to_string()}));
+    }
     let mut last_unformatted_index: usize = 0;
     if collected_tokens.is_empty() {
         inline_tokens.push(InlineToken::Unformatted(String::from(text)));

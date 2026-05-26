@@ -18,7 +18,7 @@ Now, what about `inline code like this`.
 
 ---
 
-One above is a line. <https://arxiv.org>
+One above is a line. <https://arxiv.org>. [google](https://google.com)
 
 - this is an unordered list
 - second entry
