@@ -139,19 +139,29 @@ fn process_inline(text: &str) -> Vec<InlineToken> {
         }
     };
     // ------ Named Link ---------
-    let re_link = Regex::new(r"\[(.*)]\((.*)\)").unwrap();
-    for capture in re_link.captures_iter(text) {
+    let re_link_named = Regex::new(r"\[(.+)]\((.+)\)").unwrap();
+    for capture in re_link_named.captures_iter(text) {
         let re_match = capture.get(1).unwrap();
         let index_start = re_match.start()-1;
         let index_end = re_match.end();
         let (_, [caption, url]) = capture.extract();
         collected_tokens.push((index_start, index_end, InlineToken::Link{caption: caption.to_string(), url: url.to_string()}));
     }
+    // ----- Unnamed Link -------
+    let re_link_unnamed = Regex::new(r"<(.+)>").unwrap();
+    for capture in re_link_unnamed.captures_iter(text) {
+        let re_match = capture.get(1).unwrap();
+        let index_start = re_match.start()-1;
+        let index_end = re_match.end();
+        let (_, [url]) = capture.extract();
+        collected_tokens.push((index_start, index_end, InlineToken::Link{caption: url.to_string(), url: url.to_string()}));
+    }
     let mut last_unformatted_index: usize = 0;
     if collected_tokens.is_empty() {
         inline_tokens.push(InlineToken::Unformatted(String::from(text)));
         return inline_tokens;
     }
+    collected_tokens.sort_by(|a, b| {a.0.cmp(&b.0)});
     for token in collected_tokens {
         let unformatted = text[last_unformatted_index..token.0].to_string();
         if !unformatted.is_empty() {
