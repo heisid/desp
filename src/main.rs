@@ -122,20 +122,20 @@ fn process_inline(text: &str) -> Vec<InlineToken> {
     // does not start/end with space or contain *
     let re_asterix = Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap();
     for capture in re_asterix.captures_iter(text) {
-        let re_match = capture.get(1).unwrap();
+        let re_match = capture.get(2).unwrap();
         let index_start = re_match.start();
         let index_end = re_match.end();
         let (_, [opening_astx, content, closing_astx]) = capture.extract();
         let astx_num = opening_astx.len().min(closing_astx.len());
         if astx_num == 1 {
             let token = InlineToken::Italics(content.to_string());
-            collected_tokens.push((index_start, index_end, token));
+            collected_tokens.push((index_start-astx_num, index_end+astx_num, token));
         } else if astx_num == 2 || astx_num > 3 {
             let token = InlineToken::Bold(content.to_string());
-            collected_tokens.push((index_start, index_end, token));
+            collected_tokens.push((index_start-astx_num, index_end+astx_num, token));
         } else if astx_num == 3 {
             let token = InlineToken::BoldItalics(content.to_string());
-            collected_tokens.push((index_start, index_end, token));
+            collected_tokens.push((index_start-astx_num, index_end+astx_num, token));
         }
     };
     // ------ Named Link ---------
