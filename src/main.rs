@@ -1,6 +1,5 @@
-use std::cmp::PartialEq;
-use std::fs;
 use regex::Regex;
+use std::fs;
 
 #[derive(Debug)]
 enum BlockToken {
