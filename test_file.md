@@ -6,7 +6,8 @@
 Beginning of a paragraph.
 This sentence is not a paragraph.
 
-Second paragraph, with *italic words* and of course **bold ones**.
+Second paragraph, with *italic words* and of course **bold ones**. ***Check this out! Bold and italics.***.
+
 ```
 and this one is for code.
 second line of code.

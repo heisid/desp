@@ -19,6 +19,7 @@ enum InlineToken {
     Unformatted(String),
     Bold(String),
     Italics(String),
+    BoldItalics(String),
     Code(String),
 }
 
@@ -35,9 +36,9 @@ fn main() {
         // ------------ Header ------------------
         let mut header_content: &str = "";
         let mut header_level: u8 = 0;
-        let re_header = Regex::new(r"(#^{1,6})(\s+)(.*)").unwrap();
-        for (_, [header_tag, _, header_match]) in re_header.captures_iter(line).map(|c| c.extract()) {
-            header_content = header_match;
+        let re_header = Regex::new(r"(^#{1,6})(\s+)(.*)").unwrap();
+        for (_, [header_tag, _, content]) in re_header.captures_iter(line).map(|c| c.extract()) {
+            header_content = content;
             header_level = header_tag.len() as u8;
         }
         if !header_content.is_empty() {
@@ -101,9 +102,41 @@ fn flush_paragraph(temp_content: &mut String, block_tokens: &mut Vec<BlockToken>
 }
 
 fn process_inline(inline_string: &str) -> Vec<InlineToken> {
-    // todo
     let mut inline_tokens: Vec<InlineToken> = Vec::new();
-    inline_tokens.push(InlineToken::Unformatted(inline_string.to_string()));
+    // Match text wrapped in *...* or **...**, where the content
+    // does not start/end with space or contain *
+    let re_asterix = Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap();
+    let mut collected_tokens: Vec<(usize, usize, InlineToken)> = vec![]; // index start, index end, token
+    for capture in re_asterix.captures_iter(inline_string) {
+        let re_match = capture.get(1).unwrap();
+        let index_start = re_match.start();
+        let index_end = re_match.end();
+        let (_, [opening_astx, content, closing_astx]) = capture.extract();
+        let astx_num = opening_astx.len().min(closing_astx.len());
+        if astx_num == 1 {
+            let token = InlineToken::Italics(content.to_string());
+            collected_tokens.push((index_start, index_end, token));
+        } else if astx_num == 2 || astx_num > 3 {
+            let token = InlineToken::Bold(content.to_string());
+            collected_tokens.push((index_start, index_end, token));
+        } else if astx_num == 3 {
+            let token = InlineToken::BoldItalics(content.to_string());
+            collected_tokens.push((index_start, index_end, token));
+        }
+    };
+    let mut last_unformatted_index: usize = 0;
+    if collected_tokens.is_empty() {
+        inline_tokens.push(InlineToken::Unformatted(String::from(inline_string)));
+        return inline_tokens;
+    }
+    for token in collected_tokens {
+        let unformatted = inline_string[last_unformatted_index..token.0].to_string();
+        if !unformatted.is_empty() {
+            inline_tokens.push(InlineToken::Unformatted(unformatted));
+        }
+        inline_tokens.push(token.2);
+        last_unformatted_index = token.1 + 1;
+    }
     inline_tokens
 }
 
