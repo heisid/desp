@@ -34,6 +34,10 @@ fn main() {
     let lines = file_content.split("\n").collect::<Vec<&str>>();
     let mut temp_content: String = String::new();
     let mut block_state = BlockState::IsInParagraph;
+    let re_code = Regex::new(r"^```\s?$").unwrap();
+    let re_line = Regex::new(r"^-+\s?$").unwrap();
+    let re_ul = Regex::new(r"^[-*]\s(.*)").unwrap();
+    let re_paragraph = Regex::new(r"^\s?$").unwrap();
     for line in lines {
         // ------------ Header ------------------
         let mut header_content: &str = "";
@@ -49,7 +53,6 @@ fn main() {
         }
 
         // ----------- Code Block ------------------
-        let re_code = Regex::new(r"^```\s?$").unwrap();
         if re_code.captures_iter(line).count() > 0 {
             match block_state {
                 BlockState::IsInCode => {
@@ -70,21 +73,18 @@ fn main() {
         }
 
         // ---------- Divider line ---------------
-        let re_line = Regex::new(r"^-+\s?$").unwrap();
         if re_line.is_match(line) {
             block_tokens.push(BlockToken::Line);
             continue;
         }
 
         // ----------- Unordered List -------------
-        let re_ul = Regex::new(r"^[-*]\s(.*)").unwrap();
         if let Some(caps) = re_ul.captures(line) {
             block_tokens.push(BlockToken::UnorderedListItem(process_inline(caps.get(1).unwrap().as_str())));
             continue;
         }
 
         // ----------- Paragraph ------------------
-        let re_paragraph = Regex::new(r"^\s?$").unwrap();
         if re_paragraph.captures_iter(line).count() > 0 {
             flush_paragraph(&mut temp_content, &mut block_tokens);
             continue;
