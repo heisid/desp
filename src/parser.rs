@@ -4,7 +4,7 @@ use regex::Regex;
 #[derive(Debug, Clone)]
 pub enum BlockToken {
     Paragraph(Vec<InlineToken>),
-    Header{level: u8, content: Vec<InlineToken>},
+    Header { level: u8, content: Vec<InlineToken> },
     Code(String),
     Line,
     UnorderedListItem(Vec<InlineToken>),
@@ -17,169 +17,226 @@ pub enum InlineToken {
     Italics(String),
     BoldItalics(String),
     Code(String),
-    Link{caption: String, url: String},
+    Link { caption: String, url: String },
+    Image { caption: String, url: String },
+}
+
+struct InlineSpan {
+    start: usize,
+    end: usize,
+    token: InlineToken,
 }
 
 enum BlockState {
-    IsInParagraph,
-    IsInCode,
+    InParagraph,
+    InCode,
 }
 
-static RE_HEADER: LazyLock<Regex> = LazyLock::new(||Regex::new(r"(^#{1,6})(\s+)(.*)").unwrap());
-static RE_PARAGRAPH: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^\s?$").unwrap());
-static RE_CODE: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^```\s?$").unwrap());
-static RE_LINE: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^-{2,}+\s?$").unwrap());
-static RE_UL: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^[-*]\s(.*)").unwrap());
-static RE_ASTERIX: LazyLock<Regex> = LazyLock::new(||Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap());
-static RE_LINK_NAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.+)]\((.+)\)").unwrap());
-static RE_LINK_UNNAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(.+)>").unwrap());
 
+static RE_HEADER:       LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^#{1,6})\s+(.*)").unwrap());
+static RE_BLANK:        LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*$").unwrap());
+static RE_CODE_BLOCK:   LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^```\s*$").unwrap());
+static RE_LINE:         LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^-{2,}\s*$").unwrap());
+static RE_UL:           LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[-*]\s(.*)").unwrap());
+static RE_ASTERISK:     LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap());
+static RE_LINK_NAMED:   LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.+)]\((.+)\)").unwrap());
+static RE_LINK_UNNAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(.+)>").unwrap());
+static RE_IMAGE:        LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[(.+)]\((.+)\)").unwrap());
 
 
 
 pub struct Parser {
-    pub tokens: Vec<BlockToken>,
+    tokens: Vec<BlockToken>,
     state: BlockState,
+    // Accumulates raw text while inside a paragraph or code block.
+    pending: String,
+}
+
+impl Default for Parser {
+    fn default() -> Self {
+        Self {
+            tokens: Vec::new(),
+            state: BlockState::InParagraph,
+            pending: String::new(),
+        }
+    }
 }
 
 impl Parser {
-    pub fn default() -> Self {
-        Self {
-            tokens: vec![],
-            state: BlockState::IsInParagraph,
-        }
-    }
-
     pub fn parse(&mut self, input: &str) -> Vec<BlockToken> {
-        let lines = input.split("\n").collect::<Vec<&str>>();
-        let mut temp_block_content: String = String::new();
-        for line in lines {
-            self.get_block_token(line, &mut temp_block_content);
+        for line in input.lines() {
+            self.process_line(line);
         }
+        self.flush_paragraph();
         self.tokens.clone()
     }
 
-    fn get_block_token(&mut self, line: &str, temp_block_content: &mut String) {
-        // ------------ Header ------------------
-        let mut header_content: &str = "";
-        let mut header_level: u8 = 0;
-        for (_, [header_tag, _, content]) in RE_HEADER.captures_iter(line).map(|c| c.extract()) {
-            header_content = content;
-            header_level = header_tag.len() as u8;
-        }
-        if !header_content.is_empty() {
-            self.tokens.push(BlockToken::Header{level: header_level, content: self.process_inline(header_content)});
+    fn process_line(&mut self, line: &str) {
+        // ----------- Header --------------------
+        if let Some(caps) = RE_HEADER.captures(line) {
+            let level = caps[1].len() as u8;
+            let content = parse_inline(&caps[2]);
+            self.tokens.push(BlockToken::Header { level, content });
             return;
         }
 
-        // ----------- Code Block ------------------
-        if RE_CODE.captures_iter(line).count() > 0 {
+        // ------------ Code Block ----------------
+        if RE_CODE_BLOCK.is_match(line) {
             match self.state {
-                BlockState::IsInCode => {
-                    self.tokens.push(BlockToken::Code(temp_block_content.clone()));
-                    temp_block_content.clear();
-                    self.state = BlockState::IsInParagraph;
-                },
-                _ => {
-                    self.flush_paragraph(temp_block_content);
-                    self.state = BlockState::IsInCode;
+                BlockState::InCode => {
+                    self.tokens.push(BlockToken::Code(self.pending.clone()));
+                    self.pending.clear();
+                    self.state = BlockState::InParagraph;
+                }
+                BlockState::InParagraph => {
+                    self.flush_paragraph();
+                    self.state = BlockState::InCode;
                 }
             }
             return;
         }
-        if matches!(self.state, BlockState::IsInCode) {
-            push_with_nl(temp_block_content, line);
+
+        if matches!(self.state, BlockState::InCode) {
+            append_line(&mut self.pending, line);
             return;
         }
 
-        // ---------- Divider line ---------------
+        // -- Line --
         if RE_LINE.is_match(line) {
             self.tokens.push(BlockToken::Line);
             return;
         }
 
-        // ----------- Unordered List -------------
+        // -- Unordered list item --
         if let Some(caps) = RE_UL.captures(line) {
-            self.tokens.push(BlockToken::UnorderedListItem(self.process_inline(caps.get(1).unwrap().as_str())));
+            let content = parse_inline(&caps[1]);
+            self.tokens.push(BlockToken::UnorderedListItem(content));
             return;
         }
 
-        // ----------- Paragraph ------------------
-        if RE_PARAGRAPH.captures_iter(line).count() > 0 {
-            self.flush_paragraph(temp_block_content);
+        // -- Blank line ends a paragraph --
+        if RE_BLANK.is_match(line) {
+            self.flush_paragraph();
             return;
         }
-        if matches!(self.state, BlockState::IsInParagraph) {
-            push_with_nl(temp_block_content, line);
-            return;
-        }
+
+        append_line(&mut self.pending, line);
     }
 
-    fn flush_paragraph(&mut self, temp_content: &mut String) {
-        if !temp_content.is_empty() {
-            self.tokens.push(BlockToken::Paragraph(self.process_inline(temp_content)));
+    fn flush_paragraph(&mut self) {
+        if !self.pending.is_empty() {
+            let content = parse_inline(&self.pending);
+            self.tokens.push(BlockToken::Paragraph(content));
+            self.pending.clear();
         }
-        temp_content.clear();
-    }
-
-    fn process_inline(&self, text: &str) -> Vec<InlineToken> {
-        let mut inline_tokens: Vec<InlineToken> = Vec::new();
-        let mut collected_tokens: Vec<(usize, usize, InlineToken)> = vec![]; // index start, index end, token
-        // ----- Bold and italics ---------
-        for capture in RE_ASTERIX.captures_iter(text) {
-            let re_match = capture.get(2).unwrap();
-            let index_start = re_match.start();
-            let index_end = re_match.end();
-            let (_, [opening_astx, content, closing_astx]) = capture.extract();
-            let astx_num = opening_astx.len().min(closing_astx.len());
-            if astx_num == 1 {
-                let token = InlineToken::Italics(content.to_string());
-                collected_tokens.push((index_start-astx_num, index_end+astx_num, token));
-            } else if astx_num == 2 || astx_num > 3 {
-                let token = InlineToken::Bold(content.to_string());
-                collected_tokens.push((index_start-astx_num, index_end+astx_num, token));
-            } else if astx_num == 3 {
-                let token = InlineToken::BoldItalics(content.to_string());
-                collected_tokens.push((index_start-astx_num, index_end+astx_num, token));
-            }
-        };
-        // ------ Named Link ---------
-        for capture in RE_LINK_NAMED.captures_iter(text) {
-            let re_match = capture.get(1).unwrap();
-            let index_start = re_match.start()-1;
-            let index_end = re_match.end();
-            let (_, [caption, url]) = capture.extract();
-            collected_tokens.push((index_start, index_end, InlineToken::Link{caption: caption.to_string(), url: url.to_string()}));
-        }
-        // ----- Unnamed Link -------
-        for capture in RE_LINK_UNNAMED.captures_iter(text) {
-            let re_match = capture.get(1).unwrap();
-            let index_start = re_match.start()-1;
-            let index_end = re_match.end();
-            let (_, [url]) = capture.extract();
-            collected_tokens.push((index_start, index_end, InlineToken::Link{caption: url.to_string(), url: url.to_string()}));
-        }
-        let mut last_unformatted_index: usize = 0;
-        if collected_tokens.is_empty() {
-            inline_tokens.push(InlineToken::Unformatted(String::from(text)));
-            return inline_tokens;
-        }
-        collected_tokens.sort_by(|a, b| {a.0.cmp(&b.0)});
-        for token in collected_tokens {
-            let unformatted = text[last_unformatted_index..token.0].to_string();
-            if !unformatted.is_empty() {
-                inline_tokens.push(InlineToken::Unformatted(unformatted));
-            }
-            inline_tokens.push(token.2);
-            last_unformatted_index = token.1 + 1;
-        }
-        inline_tokens
     }
 }
 
-fn push_with_nl(orig_text: &mut String, new_line: &str) {
-    if !orig_text.is_empty() {
-        orig_text.push_str("\n");
+fn parse_inline(text: &str) -> Vec<InlineToken> {
+    let mut spans = collect_inline_spans(text);
+
+    if spans.is_empty() {
+        return vec![InlineToken::Unformatted(text.to_string())];
     }
-    orig_text.push_str(new_line);
+
+    spans.sort_by_key(|s| s.start);
+
+    let mut tokens: Vec<InlineToken> = Vec::new();
+    let mut cursor = 0;
+
+    for span in spans {
+        if cursor < span.start {
+            let plain = text[cursor..span.start].to_string();
+            if !plain.is_empty() {
+                tokens.push(InlineToken::Unformatted(plain));
+            }
+        }
+        tokens.push(span.token);
+        cursor = span.end + 1;
+    }
+
+    if cursor < text.len() {
+        let tail = text[cursor..].to_string();
+        if !tail.is_empty() {
+            tokens.push(InlineToken::Unformatted(tail));
+        }
+    }
+
+    tokens
+}
+
+fn collect_inline_spans(text: &str) -> Vec<InlineSpan> {
+    let mut spans: Vec<InlineSpan> = Vec::new();
+
+    // ------- Bold / italics / bold-italics --------------
+    for cap in RE_ASTERISK.captures_iter(text) {
+        let inner = cap.get(2).unwrap();
+        let (_, [opening, content, closing]) = cap.extract();
+        let asterisk_count = opening.len().min(closing.len());
+
+        let token = match asterisk_count {
+            1 => InlineToken::Italics(content.to_string()),
+            3 => InlineToken::BoldItalics(content.to_string()),
+            _ => InlineToken::Bold(content.to_string()), // 2 or >3
+        };
+
+        spans.push(InlineSpan {
+            start: inner.start() - asterisk_count,
+            end:   inner.end()   + asterisk_count,
+            token,
+        });
+    }
+
+    // --------- Named link: [caption](url) --------------
+    for cap in RE_LINK_NAMED.captures_iter(text) {
+        let bracket_start = cap.get(1).unwrap().start() - 1;
+        let paren_end     = cap.get(2).unwrap().end();
+        let (_, [caption, url]) = cap.extract();
+        spans.push(InlineSpan {
+            start: bracket_start,
+            end:   paren_end,
+            token: InlineToken::Link {
+                caption: caption.to_string(),
+                url:     url.to_string(),
+            },
+        });
+    }
+
+    // ------------ Image ---------------------------------
+    for cap in RE_IMAGE.captures_iter(text) {
+        let bracket_start = cap.get(1).unwrap().start() - 1;
+        let paren_end     = cap.get(2).unwrap().end();
+        let (_, [caption, url]) = cap.extract();
+        spans.push(InlineSpan {
+            start: bracket_start,
+            end:   paren_end,
+            token: InlineToken::Image {
+                caption: caption.to_string(),
+                url:     url.to_string(),
+            },
+        });
+    }
+
+    // ------------ Unnamed link: <url> -----------------
+    for cap in RE_LINK_UNNAMED.captures_iter(text) {
+        let inner = cap.get(1).unwrap();
+        let (_, [url]) = cap.extract();
+        spans.push(InlineSpan {
+            start: inner.start() - 1,
+            end:   inner.end(),
+            token: InlineToken::Link {
+                caption: url.to_string(),
+                url:     url.to_string(),
+            },
+        });
+    }
+
+    spans
+}
+
+fn append_line(buf: &mut String, line: &str) {
+    if !buf.is_empty() {
+        buf.push('\n');
+    }
+    buf.push_str(line);
 }
