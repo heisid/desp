@@ -28,7 +28,7 @@ enum BlockState {
 static RE_HEADER: LazyLock<Regex> = LazyLock::new(||Regex::new(r"(^#{1,6})(\s+)(.*)").unwrap());
 static RE_PARAGRAPH: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^\s?$").unwrap());
 static RE_CODE: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^```\s?$").unwrap());
-static RE_LINE: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^-+\s?$").unwrap());
+static RE_LINE: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^-{2,}+\s?$").unwrap());
 static RE_UL: LazyLock<Regex> = LazyLock::new(||Regex::new(r"^[-*]\s(.*)").unwrap());
 static RE_ASTERIX: LazyLock<Regex> = LazyLock::new(||Regex::new(r"(\*+)([^\s*](?:[^*]*?[^\s*])?)(\*+)").unwrap());
 static RE_LINK_NAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.+)]\((.+)\)").unwrap());
@@ -58,7 +58,7 @@ impl Parser {
         }
         self.tokens.clone()
     }
-    
+
     fn get_block_token(&mut self, line: &str, temp_block_content: &mut String) {
         // ------------ Header ------------------
         let mut header_content: &str = "";
