@@ -42,6 +42,7 @@ static RE_ASTERISK:     LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\*+)([^
 static RE_LINK_NAMED:   LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.+)]\((.+)\)").unwrap());
 static RE_LINK_UNNAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(.+)>").unwrap());
 static RE_IMAGE:        LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[(.+)]\((.+)\)").unwrap());
+static RE_CODE_INLINE:  LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`(.+)`").unwrap());
 
 
 
@@ -204,16 +205,27 @@ fn collect_inline_spans(text: &str) -> Vec<InlineSpan> {
 
     // ------------ Image ---------------------------------
     for cap in RE_IMAGE.captures_iter(text) {
-        let bracket_start = cap.get(1).unwrap().start() - 1;
+        let exl_mark = cap.get(1).unwrap().start() - 1;
         let paren_end     = cap.get(2).unwrap().end();
         let (_, [caption, url]) = cap.extract();
         spans.push(InlineSpan {
-            start: bracket_start,
+            start: exl_mark,
             end:   paren_end,
             token: InlineToken::Image {
                 caption: caption.to_string(),
                 url:     url.to_string(),
             },
+        });
+    }
+
+    for cap in RE_CODE_INLINE.captures_iter(text) {
+        let tilde_start = cap.get(1).unwrap().start() - 1;
+        let tilde_end   = cap.get(1).unwrap().end() + 1;
+        let (_, [code]) = cap.extract();
+        spans.push(InlineSpan {
+            start: tilde_start,
+            end:   tilde_end,
+            token: InlineToken::Code(code.to_string()),
         });
     }
 
