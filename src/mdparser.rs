@@ -45,14 +45,14 @@ static RE_IMAGE:        LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[(.+)]
 
 
 
-pub struct Parser {
+pub struct MdParser {
     tokens: Vec<BlockToken>,
     state: BlockState,
     // Accumulates raw text while inside a paragraph or code block.
     pending: String,
 }
 
-impl Default for Parser {
+impl Default for MdParser {
     fn default() -> Self {
         Self {
             tokens: Vec::new(),
@@ -62,7 +62,7 @@ impl Default for Parser {
     }
 }
 
-impl Parser {
+impl MdParser {
     pub fn parse(&mut self, input: &str) -> Vec<BlockToken> {
         for line in input.lines() {
             self.process_line(line);

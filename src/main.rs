@@ -1,14 +1,34 @@
-mod parser;
+mod mdparser;
+mod converter;
 
-use crate::parser::Parser;
+use crate::mdparser::MdParser;
 use std::fs;
+use clap::Parser;
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    input: String,
+
+    #[arg(short, long, action, default_value_t = true)]
+    to_stdout: bool,
+
+    #[arg(short, long, default_value = "parsed_output.html")]
+    output: String,
+}
 
 fn main() {
-    let file_content = fs::read_to_string("test_file.md")
+    let args = Args::parse();
+    let file_content = fs::read_to_string(args.input)
         .expect("File does not exist");
 
-    let mut parser = Parser::default();
+    let mut parser = MdParser::default();
     let output_tokens = parser.parse(&file_content);
-    println!("{:#?}", output_tokens);
+
+    if args.to_stdout {
+        println!("{:#?}", output_tokens);
+    }
+
+
 }
